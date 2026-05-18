@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>CRUD Películas - MongoDB</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+    <div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">Gestionar</h2>
+        <div>
+            <button class="btn btn-outline-primary me-2" onclick="switchView('movies')">Películas</button>
+            <button class="btn btn-outline-secondary" onclick="switchView('customers')">Clientes</button>
+        </div>
+    </div>
+    
+    <div id="moviesSection">
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-5">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Buscar película por título...">
+                    </div>
+                    <div class="col-md-4">
+                        <select id="genreFilter" class="form-select">
+                            <option value="">Todos los géneros</option>
+                            <option value="Action">Action</option>
+                            <option value="Sci-Fi">Sci-Fi</option>
+                            <option value="Comedy">Comedy</option>
+                            <option value="Drama">Drama</option>
+                            <option value="Horror">Horror</option>
+                            <option value="Thriller">Thriller</option>
+                            <option value="Romance">Romance</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-info w-100" onclick="resetSearch()">Mostrar Todas</button>
+                    </div>
+                </div>
+                <h5 class="card-title" id="movieFormTitle">Añadir Película</h5>
+                <form id="movieForm">
+                    <input type="hidden" id="mongoId">
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <input type="text" id="title" class="form-control" placeholder="Título" required>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" id="year" class="form-control" placeholder="Año" required>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" step="0.01" id="price" class="form-control" placeholder="Precio" required>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" id="genre" class="form-control" placeholder="Géneros (separados por comas)" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3" id="saveBtn">Guardar Película</button>
+                    <button type="button" class="btn btn-secondary mt-3 d-none" id="cancelBtn" onclick="resetForm()">Cancelar Edición</button>
+                </form>
+            </div>
+        </div>
+
+        <table class="table table-striped table-hover shadow-sm bg-white">
+            <thead class="table-dark">
+                <tr>
+                    <th>Movie_ID</th>
+                    <th>Título</th>
+                    <th>Año</th>
+                    <th>Precio</th>
+                    <th>Géneros</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="movieTableBody">
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Customers section -->
+    <div id="customersSection" style="display:none;" class="mt-4">
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <input type="text" id="custSearch" class="form-control" placeholder="Buscar cliente por nombre, apellido o email...">
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-info w-100" onclick="resetCustSearch()">Mostrar Todos</button>
+                    </div>
+                </div>
+                <h5 class="card-title" id="custFormTitle">Añadir Cliente</h5>
+                <form id="custForm">
+                    <input type="hidden" id="custMongoId">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <input type="text" id="custFirst" class="form-control" placeholder="Nombre" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" id="custLast" class="form-control" placeholder="Apellido" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="email" id="custEmail" class="form-control" placeholder="Email" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3" id="saveCustBtn">Guardar Cliente</button>
+                    <button type="button" class="btn btn-secondary mt-3 d-none" id="cancelCustBtn" onclick="resetCustForm()">Cancelar Edición</button>
+                </form>
+            </div>
+        </div>
+
+        <table class="table table-striped table-hover shadow-sm bg-white">
+            <thead class="table-dark">
+                <tr>
+                    <th>cust_id</th>
+                    <th>Nombre</th>
+                    <th>Apellido</th>
+                    <th>Email</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="custTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const apiBase = '/api/movies';
+    let isEditing = false;
+
+    // Obtener y renderizar (READ)
+    async function loadMovies() {
+        const searchTerm = document.getElementById('searchInput').value.trim();
+    const selectedGenre = document.getElementById('genreFilter').value;
+    const queryStrings = [];
+    if (searchTerm) queryStrings.push(`search=${encodeURIComponent(searchTerm)}`);
+    if (selectedGenre) queryStrings.push(`genre=${encodeURIComponent(selectedGenre)}`);
+    const query = queryStrings.length ? `?${queryStrings.join('&')}` : '';
+    const res = await fetch(apiBase + query);
+    const movies = await res.json();
+    
+    const tbody = document.getElementById('movieTableBody');
+    tbody.innerHTML = '';
+        
+        movies.forEach(m => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${m.movie_id || ''}</td>
+                <td><strong>${m.title || ''}</strong></td>
+                <td>${m.year || ''}</td>
+                <td>$${m.list_price || ''}</td>
+                <td>${(m.genres || []).join(', ')}</td>
+                <td>
+                    <button class="btn btn-sm btn-warning" onclick="editMovie('${m._id}', '${m.movie_id}', '${m.title}', '${m.year}', '${m.list_price}', '${(m.genres || []).join(', ')}')">Editar</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteMovie('${m._id}')">Borrar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('movieForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const movieData = {
+            title: document.getElementById('title').value,
+            year: document.getElementById('year').value,
+            list_price: document.getElementById('price').value,
+            genres: document.getElementById('genre').value.split(',').map(g => g.trim()).filter(Boolean)
+        };
+
+        try {
+            if (isEditing) {
+                const id = document.getElementById('mongoId').value;
+                const response = await fetch(`${apiBase}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(movieData)
+                });
+                if (!response.ok) throw new Error('Error al actualizar');
+                alert('Película actualizada exitosamente');
+            } else {
+                const response = await fetch(apiBase, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(movieData)
+                });
+                if (!response.ok) throw new Error('Error al guardar');
+                const result = await response.json();
+                console.log('Película guardada:', result);
+                alert('Película guardada exitosamente');
+            }
+            
+            resetForm();
+            await loadMovies();
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Hubo un error: ' + error.message);
+        }
+    });
+
+    window.editMovie = function(id, movieId, title, year, price, genres) {
+        isEditing = true;
+        document.getElementById('mongoId').value = id;
+        document.getElementById('title').value = title;
+        document.getElementById('year').value = year;
+        document.getElementById('price').value = price;
+        document.getElementById('genre').value = Array.isArray(genres) ? genres.join(', ') : (genres || '');
+        
+        document.getElementById('movieFormTitle').innerText = "Editando Película";
+        document.getElementById('saveBtn').className = "btn btn-success mt-3";
+        document.getElementById('saveBtn').innerText = "Actualizar Cambios";
+        document.getElementById('cancelBtn').classList.remove('d-none');
+    };
+
+    // (DELETE)
+    window.deleteMovie = async function(id) {
+        if(confirm("¿Seguro que deseas eliminar esta película?")) {
+            await fetch(`${apiBase}/${id}`, { method: 'DELETE' });
+            loadMovies();
+        }
+    };
+
+    // --- Customers CRUD client-side ---
+    const apiCust = '/api/customers';
+    async function loadCustomers() {
+        // if a search term is provided in the input, pass it to the server
+        const searchTerm = (document.getElementById('custSearch') && document.getElementById('custSearch').value.trim()) || '';
+        const res = await fetch(apiCust + (searchTerm ? ('?search=' + encodeURIComponent(searchTerm)) : ''));
+        const customers = await res.json();
+        const tbody = document.getElementById('custTableBody');
+        tbody.innerHTML = '';
+        customers.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${c.cust_id || ''}</td>
+                <td>${c.first_name || ''}</td>
+                <td>${c.last_name || ''}</td>
+                <td>${c.email || ''}</td>
+                <td>
+                    <button class="btn btn-sm btn-warning" onclick="editCust('${c._id}', '${c.first_name}', '${c.last_name}', '${c.email}')">Editar</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteCust('${c._id}')">Borrar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('custForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const custData = {
+            first_name: document.getElementById('custFirst').value,
+            last_name: document.getElementById('custLast').value,
+            email: document.getElementById('custEmail').value
+        };
+        try {
+            if (document.getElementById('custMongoId').value) {
+                const id = document.getElementById('custMongoId').value;
+                const res = await fetch(`${apiCust}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(custData) });
+                if (!res.ok) throw new Error('Error al actualizar cliente');
+                alert('Cliente actualizado');
+            } else {
+                const res = await fetch(apiCust, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(custData) });
+                if (!res.ok) throw new Error('Error al crear cliente');
+                alert('Cliente creado');
+            }
+            resetCustForm();
+            await loadCustomers();
+        } catch (err) {
+            console.error(err);
+            alert('Error: ' + err.message);
+        }
+    });
+
+    window.editCust = function(id, first, last, email) {
+        document.getElementById('custMongoId').value = id;
+        document.getElementById('custFirst').value = first;
+        document.getElementById('custLast').value = last;
+        document.getElementById('custEmail').value = email;
+        document.getElementById('custFormTitle').innerText = 'Editando Cliente';
+        document.getElementById('saveCustBtn').className = 'btn btn-success mt-3';
+        document.getElementById('saveCustBtn').innerText = 'Actualizar Cliente';
+        document.getElementById('cancelCustBtn').classList.remove('d-none');
+    }
+
+    window.deleteCust = async function(id) {
+        if (!confirm('¿Borrar cliente?')) return;
+        await fetch(`${apiCust}/${id}`, { method: 'DELETE' });
+        await loadCustomers();
+    }
+
+    // Reset customer search
+    window.resetCustSearch = function() {
+        const el = document.getElementById('custSearch');
+        if (el) el.value = '';
+        loadCustomers();
+    }
+
+    // Customer search in real time
+    const custSearchEl = document.getElementById('custSearch');
+    if (custSearchEl) {
+        custSearchEl.addEventListener('keyup', function(e) {
+            const term = this.value.trim();
+            // simple debounce: wait 200ms after typing
+            if (this._deb) clearTimeout(this._deb);
+            this._deb = setTimeout(() => loadCustomers(), 200);
+        });
+    }
+
+    window.resetCustForm = function() {
+        document.getElementById('custForm').reset();
+        document.getElementById('custMongoId').value = '';
+        document.getElementById('custFormTitle').innerText = 'Añadir Cliente';
+        document.getElementById('saveCustBtn').className = 'btn btn-primary mt-3';
+        document.getElementById('saveCustBtn').innerText = 'Guardar Cliente';
+        document.getElementById('cancelCustBtn').classList.add('d-none');
+    }
+
+    function switchView(view) {
+        if (view === 'customers') {
+            document.querySelector('h2').innerText = 'Gestionar Clientes';
+            document.getElementById('moviesSection').style.display = 'none';
+            document.getElementById('customersSection').style.display = 'block';
+            loadCustomers();
+        } else {
+            document.querySelector('h2').innerText = 'Gestionar Películas';
+            document.getElementById('moviesSection').style.display = 'block';
+            document.getElementById('customersSection').style.display = 'none';
+            loadMovies();
+        }
+    }
+
+    window.resetForm = function() {
+        isEditing = false;
+        document.getElementById('movieForm').reset();
+        document.getElementById('mongoId').value = "";
+        document.getElementById('movieFormTitle').innerText = "Añadir Película";
+        document.getElementById('saveBtn').className = "btn btn-primary mt-3";
+        document.getElementById('saveBtn').innerText = "Guardar Película";
+        document.getElementById('cancelBtn').classList.add('d-none');
+    }
+
+    window.resetSearch = function() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('genreFilter').value = '';
+        loadMovies();
+    }
+
+    // Búsqueda en tiempo real
+    const movieSearchInput = document.getElementById('searchInput');
+    const genreFilterEl = document.getElementById('genreFilter');
+
+    function scheduleMovieSearch() {
+        if (movieSearchInput._deb) clearTimeout(movieSearchInput._deb);
+        movieSearchInput._deb = setTimeout(() => loadMovies(), 200);
+    }
+
+    if (movieSearchInput) {
+        movieSearchInput.addEventListener('keyup', scheduleMovieSearch);
+    }
+    if (genreFilterEl) {
+        genreFilterEl.addEventListener('change', loadMovies);
+    }
+
+    // Arrancar la app
+    loadMovies();
+</script>
+
+</body>
+</html>
